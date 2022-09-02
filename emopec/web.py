@@ -23,8 +23,6 @@ Please cite:
 
 """
 
-from __future__ import division
-
 import re
 
 import flask

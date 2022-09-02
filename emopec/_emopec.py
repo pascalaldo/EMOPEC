@@ -24,8 +24,6 @@ Please cite:
 
 """
 
-from __future__ import division
-
 from emopec._sequences import SEQS, SEQS_MAX
 from emopec._predicted_sequences import PREDICTED_SEQS
 

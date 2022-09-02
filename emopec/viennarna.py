@@ -106,6 +106,7 @@ class ViennaRNALib:
     """
 
     def mfe(self, seq, d=2):
+        import RNA
         """RNAfold MFE."""
         RNA.cvar.dangles = d
         RNA.cvar.cut_point = -1
