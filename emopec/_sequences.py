@@ -27,7 +27,6 @@ Please cite:
 
 import collections
 
-
 SEQS_MAX = 'AGGAGA'
 
 
