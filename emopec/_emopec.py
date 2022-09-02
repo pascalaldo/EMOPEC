@@ -24,8 +24,8 @@ Please cite:
 
 """
 
-from emopec._sequences import SEQS, SEQS_MAX
 from emopec._predicted_sequences import PREDICTED_SEQS
+from emopec._sequences import SEQS, SEQS_MAX
 
 
 def spacing_penalty(rbs_calc_spacing, optimal_spacing=5,
@@ -141,7 +141,7 @@ def make_library(up_seq, sd_seq, sp_seq, cd_seq, n=5, target=1.0, current=None,
                        Default is expression level of current sequence.
     :type  current:     float
     :param int maxdev: How many sequences to consider as new SD candidates.
-    :param str dg_seq: IUPAC degenerate 5'-UTR sequence with constraints.
+    :param str dg_seq: IUPAC degenerate 5'-UTR sequence with constraints or list thereof.
 
         >>> lib = make_library('ACAAGTCGCTTAAGGCTTGCCAAC', 'GAACCA', 'TTGCCGCC',
         ...                    'ATGAAGTTTATCATTAAATTGTTCCCGGAAATCACCATCAAAAGCC')
@@ -193,12 +193,20 @@ def make_library(up_seq, sd_seq, sp_seq, cd_seq, n=5, target=1.0, current=None,
     dG_mRNA = rna.mfe(pl(sd_seq))
 
     okseq = lambda s: True
-    if dg_seq:
-        sd_constraints = dg_seq[-7-spc:-1-spc].upper().replace('U', 'T')
+    def determine_constraints(dgsq):
+        sd_constraints = dgsq[-7-spc:-1-spc].upper().replace('U', 'T')
         if len(sd_constraints) < 6:
             sd_constraints = (6 - len(sd_constraints)) * 'N' + sd_constraints
         enc_constraints, _ = codecs.charmap_encode(sd_constraints, 'replace', IUPAC_ENCODING)
         enc_constraints = bytearray(enc_constraints)
+        return enc_constraints
+    if isinstance(dg_seq, list):
+        enc_constraints = [determine_constraints(dg) for dg in dg_seq]
+        def okseq(s):
+            enc_sd, _ = codecs.charmap_encode(s, 'replace', IUPAC_ENCODING)
+            return any(all(a & b for a, b in zip(bytearray(enc_sd), enc_con)) for enc_con in enc_constraints)
+    elif dg_seq:
+        enc_constraints = determine_constraints(dg_seq)
         def okseq(s):
             enc_sd, _ = codecs.charmap_encode(s, 'replace', IUPAC_ENCODING)
             return all(a & b for a, b in zip(bytearray(enc_sd), enc_constraints))
