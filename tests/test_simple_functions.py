@@ -2,6 +2,7 @@ import pytest
 
 import emopec
 
+
 def test_simple_expression_estimation():
     exp = emopec.get_expression('AGGAGA')
     assert pytest.approx(exp) == 9.41932973140501

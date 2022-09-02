@@ -1,6 +1,6 @@
-import pytest
 
 import emopec
+
 
 def test_library_generation():
     my_cds = 'ATGAAGTTTATCATTAAATTGTTCCCGGAAATCACCATCAAAAGCC'

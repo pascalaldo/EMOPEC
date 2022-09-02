@@ -26,8 +26,8 @@ Please cite:
 import re
 
 import flask
-import emopec
 
+import emopec
 
 #Create a flask app
 app = flask.Flask(__name__)

@@ -1,7 +1,6 @@
 
 from setuptools import setup
 
-
 setup(
     name='emopec',
     version='1.0',
