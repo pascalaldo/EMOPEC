@@ -194,7 +194,7 @@ def make_library(up_seq, sd_seq, sp_seq, cd_seq, n=5, target=1.0, current=None,
 
     okseq = lambda s: True
     def determine_constraints(dgsq):
-        sd_constraints = dgsq[-7-spc:-1-spc].upper().replace('U', 'T')
+        sd_constraints = dgsq[-6-spc:-spc].upper().replace('U', 'T')
         if len(sd_constraints) < 6:
             sd_constraints = (6 - len(sd_constraints)) * 'N' + sd_constraints
         enc_constraints, _ = codecs.charmap_encode(sd_constraints, 'replace', IUPAC_ENCODING)
@@ -231,6 +231,9 @@ def make_library(up_seq, sd_seq, sp_seq, cd_seq, n=5, target=1.0, current=None,
 
             #Minimize delta delta G mRNA
             ddG = abs(dG_mRNA_mut - dG_mRNA)
+            # if best[0] and ddG == best[2]:
+            #     print("equal")
+            # el
             if not best[0] or ddG < best[2]:
                 expr_pct = expr / max_expr
                 best = (cand_sd, expr, ddG, expr_pct)
@@ -238,5 +241,149 @@ def make_library(up_seq, sd_seq, sp_seq, cd_seq, n=5, target=1.0, current=None,
         if best[0]:
             lib.append(best)
             used.add(best[0])
+
+    return sorted(lib, key=lambda l: l[1])
+
+
+def make_extended_library(up_seq, sd_seq, sp_seq, cd_seq, n=5, target=1.0, current=None,
+                 maxdev=10, dg_seq=None):
+    """Create a library based on the EMOPEC model.
+
+    :param str up_seq: Sequence upstream of SD sequence.
+    :param str sd_seq: 6-nucleotide SD sequence.
+    :param str sp_seq: Spacing between SD and CDS.
+    :param str cd_seq: Coding sequence.
+    :param int n:      Library size
+    :param target:     Target in relative expression (interval 0-1).
+    :type  target:      float
+    :param current:    Relative expression level to start the library (0-1).
+                       Default is expression level of current sequence.
+    :type  current:     float
+    :param int maxdev: How many sequences to consider as new SD candidates.
+    :param str dg_seq: IUPAC degenerate 5'-UTR sequence with constraints or list thereof.
+
+        >>> lib = make_library('ACAAGTCGCTTAAGGCTTGCCAAC', 'GAACCA', 'TTGCCGCC',
+        ...                    'ATGAAGTTTATCATTAAATTGTTCCCGGAAATCACCATCAAAAGCC')
+        >>> for vals in lib:
+        ...     print('{}: {:.4f} {:.2f}kcal/mol {:.0%}'.format(*vals))
+        AGACAT: 2.6361 0.30kcal/mol 40%
+        TAGAGT: 3.6126 0.70kcal/mol 55%
+        CGAGTG: 4.6015 2.50kcal/mol 70%
+        AGAGTA: 5.6119 0.00kcal/mol 86%
+        AGGAGT: 6.3893 1.20kcal/mol 98%
+
+    With constraints::
+
+        >>> l2 = make_library('ACAAGTCGCTTAAGGCTTGCCAAC', 'GAACCA', 'TTGCCGCC',
+        ...                   'ATGAAGTTTATCATTAAATTGTTCCCGGAAATCACCATCAAAAGCC',
+        ...                   dg_seq='NNNNNNNNNNVRRKWNNNNNNNN')
+        >>> for vals in l2:
+        ...     print('{}: {:.4f} {:.2f}kcal/mol {:.0%}'.format(*vals))
+        AGAAAT: 2.6914 0.40kcal/mol 41%
+        TAGAGT: 3.6126 0.70kcal/mol 55%
+        TGGAAG: 4.4340 2.10kcal/mol 68%
+        GAGAGT: 5.4777 1.90kcal/mol 84%
+        AGGAGT: 6.3893 1.20kcal/mol 98%
+
+    """
+    spc = len(sp_seq)
+    max_expr = get_expression(SEQS_MAX, spc)
+
+    #Get the target level in fluorescence units
+    target = max_expr * target
+
+    #Get the initial expression level
+    if current is None:
+        current = get_expression(sd_seq, spc)
+    else:
+        current = max_expr * current
+
+    #Normalize SD sequence to uppercase string
+    up_seq = up_seq.upper().replace('U', 'T')
+    sd_seq = sd_seq.upper().replace('U', 'T')
+    sp_seq = sp_seq.upper().replace('U', 'T')
+    cd_seq = cd_seq.upper().replace('U', 'T')
+
+    if not dg_seq:
+        dg_seq = ["N"*(spc+6)]
+
+    #Leader cutoff
+    lc = 35 - 6 - len(sp_seq) #6nt for SD
+    #Unformatted prototype leader
+    # pl = (up_seq[-lc:] + '{}' + sp_seq + cd_seq[:35]).format
+    def pl(up_s, sd_s, sp_s, cd_s):
+        return (up_s[-lc:] + sd_s + sp_s + cd_s[:35])
+
+    import emopec.viennarna as rna
+
+    #Run the RBS Calculator
+    dG_mRNA = rna.mfe(pl(up_seq, sd_seq, sp_seq, cd_seq))
+
+    okseq = lambda s: True
+    def determine_constraints(dgsq):
+        sd_constraints = dgsq[-6-spc:-spc].upper().replace('U', 'T')
+        print(sd_constraints)
+        if len(sd_constraints) < 6:
+            sd_constraints = (6 - len(sd_constraints)) * 'N' + sd_constraints
+        enc_constraints, _ = codecs.charmap_encode(sd_constraints, 'replace', IUPAC_ENCODING)
+        enc_constraints = bytearray(enc_constraints)
+        return enc_constraints
+    enc_constraints = [determine_constraints(dg) for dg in dg_seq]
+    def okseq(s):
+        enc_sd, _ = codecs.charmap_encode(s, 'replace', IUPAC_ENCODING)
+        return any(all(a & b for a, b in zip(bytearray(enc_sd), enc_con)) for enc_con in enc_constraints)
+
+    for lib_step in [0,1]:
+        lib = []
+
+        all_seqs = [(s, get_expression(s, spc)) for s in SEQS if okseq(s)]
+        if lib_step == 1:
+            for s, v in PREDICTED_SEQS.items():
+                if s in SEQS:
+                    continue
+                if okseq(s):
+                    all_seqs.append((s, get_expression(s, spc)))
+
+        stepsize = (target - current) / n
+        steps = sorted([target - stepsize * i for i in range(n)])
+        j = 0
+        used = {sd_seq, }
+        for ct in steps:
+            candidates = sorted(all_seqs, key=lambda s: abs(s[1] - ct))[:maxdev]
+
+            best = (None, None, 99999, 0.)
+            for cand_sd, expr in candidates: #all_seqs[j:j+maxdev]:
+                #Make sure there are no dupes in the library
+                if cand_sd in used:
+                    continue
+                enc_cand_sd, _ = codecs.charmap_encode(cand_sd, 'replace', IUPAC_ENCODING)
+                enc_cand_sd = bytearray(enc_cand_sd)
+
+                for constraint in dg_seq:
+                    constraint_sd_seq = constraint[(-6-spc):-spc].upper().replace('U', 'T')
+                    enc_constraint_sd_seq, _ = codecs.charmap_encode(constraint_sd_seq, 'replace', IUPAC_ENCODING)
+                    enc_constraint_sd_seq = bytearray(enc_constraint_sd_seq)
+                    if not all(a & b for a, b in zip(enc_cand_sd, enc_constraint_sd_seq)):
+                        continue
+                    constraint_up_seq = constraint[:(-6-spc)].lstrip('N')
+                    constraint_sp_seq = constraint[-spc:].rstrip('N')
+
+                    mod_up_seq = up_seq[:(len(up_seq)-len(constraint_up_seq))] + constraint_up_seq
+                    mod_sp_seq = constraint_sp_seq + sp_seq[len(constraint_sp_seq):]
+
+                    dG_mRNA_mut = rna.mfe(pl(mod_up_seq, cand_sd, mod_sp_seq, cd_seq))
+
+                    #Minimize delta delta G mRNA
+                    ddG = abs(dG_mRNA_mut - dG_mRNA)
+                    # if best[0] and ddG == best[2]:
+                    #     print("equal")
+                    # el
+                    if not best[0] or ddG < best[2]:
+                        expr_pct = expr / max_expr
+                        best = (cand_sd, expr, ddG, expr_pct, mod_up_seq, mod_sp_seq)
+
+            if best[0]:
+                lib.append(best)
+                used.add(best[0])
 
     return sorted(lib, key=lambda l: l[1])

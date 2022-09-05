@@ -27,4 +27,5 @@ Please cite:
 from emopec._emopec import (get_expression,
                             predict_spacing,
                             make_library,
+                            make_extended_library,
                             SEQS_MAX)
